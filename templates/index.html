@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard Saham IDX</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e5e7eb;
+            padding: 20px;
+        }
+        select, button {
+            padding: 8px;
+            font-size: 14px;
+        }
+        .card {
+            background: #020617;
+            padding: 16px;
+            margin-top: 16px;
+            border-radius: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+        th, td {
+            border-bottom: 1px solid #1e293b;
+            padding: 6px;
+            text-align: right;
+        }
+        th {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<h2>📊 Dashboard Saham Indonesia</h2>
+
+<select id="stockSelect">
+    <option value="">-- Pilih Saham --</option>
+    <option value="BBCA.JK">BBCA</option>
+    <option value="TLKM.JK">TLKM</option>
+    <option value="BMRI.JK">BMRI</option>
+    <option value="ASII.JK">ASII</option>
+    <option value="BRIS.JK">BRIS</option>
+</select>
+
+<button onclick="loadStock()">Load</button>
+
+<div id="result" class="card" style="display:none;">
+    <select id="stockInterval">
+        <option value="1d">Harian</option>
+        <option value="1h">Per Jam</option>
+        <option value="15m">15 Menit</option>
+        <option value="5m">5 Menit</option>
+    </select>
+    <h3 id="symbol"></h3>
+    <p>
+        💰 Last: <b id="last"></b> |
+        📈 High: <b id="high"></b> |
+        📉 Low: <b id="low"></b> |
+        📊 Volume: <b id="volume"></b>
+    </p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Tanggal</th>
+                <th>Open</th>
+                <th>High</th>
+                <th>Low</th>
+                <th>Close</th>
+                <th>Volume</th>
+            </tr>
+        </thead>
+        <tbody id="history"></tbody>
+    </table>
+</div>
+
+<script>
+let currentSymbol = null;
+let refreshTimer = null;
+
+async function loadStock(auto = false) {
+    if (!auto) {
+        currentSymbol = document.getElementById("stockSelect").value;
+    }
+
+    if (!currentSymbol) return alert("Pilih saham dulu!");
+
+    const interval = document.getElementById("stockInterval").value || "1d";
+    const period = interval === "1d" ? "1mo" : "5d";
+
+    const res = await fetch(
+        `/api/stock?symbol=${currentSymbol}&period=${period}&interval=${interval}`
+    );
+    const data = await res.json();
+
+    if (data.error) {
+        alert(data.error);
+        return;
+    }
+
+    renderStock(data);
+    startAutoRefresh(interval);
+}
+
+function renderStock(data) {
+    document.getElementById("result").style.display = "block";
+    document.getElementById("symbol").innerText = data.symbol;
+    document.getElementById("last").innerText = data.last_price;
+    document.getElementById("high").innerText = data.high;
+    document.getElementById("low").innerText = data.low;
+    document.getElementById("volume").innerText =
+        data.volume.toLocaleString();
+
+    const tbody = document.getElementById("history");
+    tbody.innerHTML = "";
+
+    data.history.slice(-10).reverse().forEach(row => {
+        tbody.innerHTML += `
+            <tr>
+                <td style="text-align:center">${row.date}</td>
+                <td>${row.open}</td>
+                <td>${row.high}</td>
+                <td>${row.low}</td>
+                <td>${row.close}</td>
+                <td>${row.volume.toLocaleString()}</td>
+            </tr>
+        `;
+    });
+}
+
+function startAutoRefresh(interval) {
+    if (refreshTimer) clearInterval(refreshTimer);
+
+    let ms = 5 * 60 * 1000; // default 5 menit
+
+    if (interval === "1h") ms = 60 * 60 * 1000;
+    if (interval === "15m") ms = 15 * 60 * 1000;
+    if (interval === "5m") ms = 5 * 60 * 1000;
+
+    refreshTimer = setInterval(() => {
+        loadStock(true);
+    }, ms);
+}
+
+
+</script>
+
+</body>
+</html>
