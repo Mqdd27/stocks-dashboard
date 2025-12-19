@@ -2,6 +2,11 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
+
     <title>Dashboard Saham IDX</title>
     <style>
         body {
@@ -13,6 +18,7 @@
         select, button {
             padding: 8px;
             font-size: 14px;
+            margin-right: 8px;
         }
         .card {
             background: #020617;
@@ -48,15 +54,19 @@
     <option value="BRIS.JK">BRIS</option>
 </select>
 
+<select id="stockInterval">
+    <option value="1d">Harian</option>
+    <option value="1h">Per Jam</option>
+    <option value="15m">15 Menit</option>
+    <option value="5m">5 Menit</option>
+</select>
+
 <button onclick="loadStock()">Load</button>
 
 <div id="result" class="card" style="display:none;">
-    <select id="stockInterval">
-        <option value="1d">Harian</option>
-        <option value="1h">Per Jam</option>
-        <option value="15m">15 Menit</option>
-        <option value="5m">5 Menit</option>
-    </select>
+
+    <canvas id="stockChart" height="120"></canvas>
+
     <h3 id="symbol"></h3>
     <p>
         💰 Last: <b id="last"></b> |
@@ -68,7 +78,7 @@
     <table>
         <thead>
             <tr>
-                <th>Tanggal</th>
+                <th>Waktu</th>
                 <th>Open</th>
                 <th>High</th>
                 <th>Low</th>
@@ -81,22 +91,15 @@
 </div>
 
 <script>
-let currentSymbol = null;
-let refreshTimer = null;
+let chart;
+let autoRefresh;
 
-async function loadStock(auto = false) {
-    if (!auto) {
-        currentSymbol = document.getElementById("stockSelect").value;
-    }
+async function loadStock() {
+    const symbol = document.getElementById("stockSelect").value;
+    const interval = document.getElementById("stockInterval").value || "15m";
+    if (!symbol) return alert("Pilih saham dulu!");
 
-    if (!currentSymbol) return alert("Pilih saham dulu!");
-
-    const interval = document.getElementById("stockInterval").value || "1d";
-    const period = interval === "1d" ? "1mo" : "5d";
-
-    const res = await fetch(
-        `/api/stock?symbol=${currentSymbol}&period=${period}&interval=${interval}`
-    );
+    const res = await fetch(`/api/stock?symbol=${symbol}&interval=${interval}`);
     const data = await res.json();
 
     if (data.error) {
@@ -104,26 +107,74 @@ async function loadStock(auto = false) {
         return;
     }
 
-    renderStock(data);
-    startAutoRefresh(interval);
-}
-
-function renderStock(data) {
     document.getElementById("result").style.display = "block";
     document.getElementById("symbol").innerText = data.symbol;
     document.getElementById("last").innerText = data.last_price;
     document.getElementById("high").innerText = data.high;
     document.getElementById("low").innerText = data.low;
-    document.getElementById("volume").innerText =
-        data.volume.toLocaleString();
+    document.getElementById("volume").innerText = data.volume.toLocaleString();
 
+    renderChart(data.history);
+    renderTable(data.history);
+
+    // auto refresh tiap 1 menit
+    clearInterval(autoRefresh);
+    autoRefresh = setInterval(loadStock, 60000);
+}
+
+function renderChart(history) {
+    const ctx = document.getElementById("stockChart");
+
+    const candles = history.map(h => ({
+        x: new Date(h.time),
+        o: h.open,
+        h: h.high,
+        l: h.low,
+        c: h.close
+    }));
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+        type: "candlestick",
+        data: {
+            datasets: [{
+                label: "Harga Saham",
+                data: candles,
+                color: {
+                    up: "#22c55e",
+                    down: "#ef4444",
+                    unchanged: "#e5e7eb"
+                }
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: {
+                    type: "time",
+                    time: { unit: "minute" },
+                    ticks: { color: "#e5e7eb" }
+                },
+                y: {
+                    ticks: { color: "#e5e7eb" }
+                }
+            }
+        }
+    });
+}
+
+function renderTable(history) {
     const tbody = document.getElementById("history");
     tbody.innerHTML = "";
 
-    data.history.slice(-10).reverse().forEach(row => {
+    history.slice().reverse().forEach(row => {
         tbody.innerHTML += `
             <tr>
-                <td style="text-align:center">${row.date}</td>
+                <td style="text-align:center">${row.time}</td>
                 <td>${row.open}</td>
                 <td>${row.high}</td>
                 <td>${row.low}</td>
@@ -133,23 +184,8 @@ function renderStock(data) {
         `;
     });
 }
-
-function startAutoRefresh(interval) {
-    if (refreshTimer) clearInterval(refreshTimer);
-
-    let ms = 5 * 60 * 1000; // default 5 menit
-
-    if (interval === "1h") ms = 60 * 60 * 1000;
-    if (interval === "15m") ms = 15 * 60 * 1000;
-    if (interval === "5m") ms = 5 * 60 * 1000;
-
-    refreshTimer = setInterval(() => {
-        loadStock(true);
-    }, ms);
-}
-
-
 </script>
+
 
 </body>
 </html>
